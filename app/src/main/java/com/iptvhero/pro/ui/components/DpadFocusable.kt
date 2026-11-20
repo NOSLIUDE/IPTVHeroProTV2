@@ -17,8 +17,9 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.nativeKeyCode
+import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.dp
@@ -41,10 +42,11 @@ fun Modifier.heroFocusable(
             shape = shape
         )
         .onKeyEvent { event ->
-            val code = event.nativeKeyCode
-            val isConfirmKey = code == AndroidKeyEvent.KEYCODE_DPAD_CENTER ||
-                code == AndroidKeyEvent.KEYCODE_ENTER ||
-                code == AndroidKeyEvent.KEYCODE_NUMPAD_ENTER
+            val key = event.key
+            val isConfirmKey = key == Key.DirectionCenter ||
+              key == Key.Enter ||
+              key == Key.NumPadEnter
+            
             if (isConfirmKey && event.type == KeyEventType.KeyUp) {
                 onClick()
                 true
