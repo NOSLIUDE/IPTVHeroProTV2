@@ -98,8 +98,7 @@ fun ProfilesScreen(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = statusMessage ?: "Nenhum perfil ainda.
-Clique em HERO LISTA ou XTREAM / TXT para adicionar listas.",
+                    text = statusMessage ?: "Nenhum perfil ainda.\nClique em HERO LISTA ou XTREAM / TXT para adicionar listas.",
                     color = TextDim,
                     fontSize = 15.sp
                 )
