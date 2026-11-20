@@ -104,7 +104,7 @@ object PlaylistParser {
         val logoRegex = Regex("""tvg-logo="([^"]*)"""")
 
         for (raw in lines) {
-            val l = raw.trim().removePrefix("﻿")
+            val l = raw.trim().removePrefix("\uFEFF")
             if (l.isEmpty()) continue
 
             if (l.startsWith("#EXTINF:")) {
@@ -142,7 +142,7 @@ object PlaylistParser {
         val lines = text.split(Regex("\r?\n"))
         val channels = mutableListOf<PlaylistItem>()
         for (raw in lines) {
-            val l = raw.trim().removePrefix("﻿")
+            val l = raw.trim().removePrefix("\uFEFF")
             if (l.isEmpty() || l.startsWith("#")) continue
             val inline = parseInlineChannel(l)
             if (inline != null) {
@@ -214,7 +214,7 @@ object PlaylistParser {
      */
     fun parseHeroUrls(text: String): List<String> {
         return text.split(Regex("\r?\n"))
-            .map { it.trim().removePrefix("﻿") }
+            .map { it.trim().removePrefix("\uFEFF") }
             .filter { it.isNotEmpty() && !it.startsWith("#") }
             .map { l ->
                 val idx = l.indexOf(" | ")
@@ -291,7 +291,7 @@ class IptvRepository(
         onProgress: ((BulkProgress) -> Unit)? = null
     ): Pair<Int, Int> = withContext(Dispatchers.IO) {
         val lines = rawLines
-            .map { it.trim().removePrefix("﻿") }
+            .map { it.trim().removePrefix("\uFEFF") }
             .filter { it.isNotEmpty() && !it.startsWith("#") }
             .map { l ->
                 val idx = l.indexOf(" | ")
@@ -826,8 +826,7 @@ class IptvRepository(
                 ).joinToString("|")
             )
         }
-        return lines.joinToString("
-")
+        return lines.joinToString("\n")
     }
 
     private fun fetchString(url: String): String? {
