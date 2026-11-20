@@ -282,8 +282,8 @@ class IptvRepository(
         }
 
     /**
-     * Processa um lote de linhas (igual ao processBulk / processOneBulkLine do index_2.html),
-     * criando 1 perfil por linha valida com nome de heroi Marvel/DC, validade, conexoes e contagens.
+     * Processa um lote de linhas criando apenas os metadados leves do perfil.
+     * O download completo das listas so ocorre quando o usuario seleciona/ativa o perfil.
      */
     suspend fun processBulkLines(
         rawLines: List<String>,
@@ -343,7 +343,7 @@ class IptvRepository(
     }
 
     /**
-     * Identico ao processOneBulkLine(line) do index_2.html
+     * Processa uma linha do lote sem baixar listas completas de canais, VODs ou series.
      */
     private suspend fun processSingleBulkLine(line: String, bulkOrigin: Boolean): String {
         val creds = PlaylistParser.detectXtreamPure(line)
@@ -352,50 +352,25 @@ class IptvRepository(
         }
 
         if (line.matches(Regex("^https?://.*", RegexOption.IGNORE_CASE))) {
-            val req = Request.Builder().url(line).build()
-            val text = httpClient.newCall(req).execute().use { resp ->
-                if (!resp.isSuccessful) throw IllegalStateException("HTTP ${resp.code}")
-                resp.body?.string().orEmpty()
-            }
-
-            if (text.contains("#EXTM3U") || text.contains("#EXTINF")) {
-                val ch = PlaylistParser.parseM3U(text)
-                if (ch.isEmpty()) throw IllegalStateException("M3U vazia")
-                val hero = HeroGenerator.generateHeroName()
-                val profileId = profileDao.insertProfile(
-                    ProfileEntity(
-                        name = hero.name,
-                        universe = hero.universe,
-                        sourceType = "m3u",
-                        sourceLabel = line.take(300),
-                        liveCount = ch.size,
-                        bulkOrigin = bulkOrigin,
-                        isActive = false
-                    )
+            val isM3uHint = line.contains("m3u", ignoreCase = true) ||
+                line.contains("get.php", ignoreCase = true) ||
+                line.contains("type=m3u", ignoreCase = true)
+            val hero = HeroGenerator.generateHeroName()
+            val profileId = profileDao.insertProfile(
+                ProfileEntity(
+                    name = hero.name,
+                    universe = hero.universe,
+                    sourceType = if (isM3uHint) "m3u" else "txt",
+                    sourceLabel = line.take(300),
+                    liveCount = 0,
+                    vodCount = 0,
+                    seriesCount = 0,
+                    bulkOrigin = bulkOrigin,
+                    isActive = false
                 )
-                profileDao.setActiveProfile(profileId)
-                return "${hero.name} (M3U) - ${ch.size}"
-            }
-
-            val chTxt = PlaylistParser.parseTXT(text)
-            if (chTxt.isNotEmpty()) {
-                val hero = HeroGenerator.generateHeroName()
-                val profileId = profileDao.insertProfile(
-                    ProfileEntity(
-                        name = hero.name,
-                        universe = hero.universe,
-                        sourceType = "txt",
-                        sourceLabel = line.take(300),
-                        liveCount = chTxt.size,
-                        bulkOrigin = bulkOrigin,
-                        isActive = false
-                    )
-                )
-                profileDao.setActiveProfile(profileId)
-                return "${hero.name} (TXT) - ${chTxt.size}"
-            }
-
-            throw IllegalStateException("Formato desconhecido")
+            )
+            profileDao.setActiveProfile(profileId)
+            return "${hero.name} (${if (isM3uHint) "M3U" else "TXT"}) - pendente"
         }
 
         val inline = PlaylistParser.parseInlineChannel(line)
@@ -408,6 +383,8 @@ class IptvRepository(
                     sourceType = "txt",
                     sourceLabel = inline.first,
                     liveCount = 1,
+                    vodCount = 0,
+                    seriesCount = 0,
                     bulkOrigin = bulkOrigin,
                     isActive = false
                 )
@@ -431,9 +408,8 @@ class IptvRepository(
     }
 
     /**
-     * Identico ao bulkLoadXtream(server, user, pass) do index_2.html:
-     * Valida credenciais, extrai exp_date, max_connections e contagens de live/vod/series
-     * sem sobrecarregar o banco antes do usuario clicar no card do perfil.
+     * Consulta apenas player_api.php (sem &action=...) para obter validade e conexoes
+     * sem baixar listas completas durante o lote.
      */
     private suspend fun bulkLoadXtreamProfileOnly(
         server: String,
@@ -444,9 +420,9 @@ class IptvRepository(
         val cleanServer = server.trim().trimEnd('/')
         val encUser = URLEncoder.encode(user.trim(), "UTF-8")
         val encPass = URLEncoder.encode(pass.trim(), "UTF-8")
-        val base = "$cleanServer/player_api.php?username=$encUser&password=$encPass"
+        val authUrl = "$cleanServer/player_api.php?username=$encUser&password=$encPass"
 
-        val authJson = fetchJsonObject(base)
+        val authJson = fetchJsonObject(authUrl)
         val userInfo = authJson?.optJSONObject("user_info")
         if (userInfo == null || userInfo.optInt("auth", 0) == 0) {
             throw IllegalStateException("Credenciais invalidas")
@@ -456,10 +432,6 @@ class IptvRepository(
         val validityIso = if (expSeconds > 0L) Instant.ofEpochSecond(expSeconds).toString() else null
         val maxConnections = userInfo.optString("max_connections").toIntOrNull()
         val activeConnections = userInfo.optString("active_cons").toIntOrNull() ?: 0
-
-        val liveC = fetchJsonArray("$base&action=get_live_streams")?.length() ?: 0
-        val vodC = fetchJsonArray("$base&action=get_vod_streams")?.length() ?: 0
-        val serC = fetchJsonArray("$base&action=get_series")?.length() ?: 0
 
         val hero = HeroGenerator.generateHeroName()
         val profileId = profileDao.insertProfile(
@@ -474,20 +446,19 @@ class IptvRepository(
                 validityIso = validityIso,
                 maxConnections = maxConnections,
                 activeConnections = activeConnections,
-                liveCount = liveC,
-                vodCount = vodC,
-                seriesCount = serC,
+                liveCount = 0,
+                vodCount = 0,
+                seriesCount = 0,
                 bulkOrigin = bulkOrigin,
                 isActive = false
             )
         )
         profileDao.setActiveProfile(profileId)
-        return "${hero.name} (XTREAM) - ${liveC + vodC + serC}"
+        return "${hero.name} (XTREAM) - perfil salvo"
     }
 
     /**
-     * Identico ao activateProfile(id) do index_2.html:
-     * Ativa o perfil e reconecta automaticamente se for Xtream ou M3U remoto.
+     * Ativa o perfil e baixa a lista completa apenas quando o perfil e selecionado.
      */
     suspend fun activateAndSyncProfile(profileId: Long): Int = withContext(Dispatchers.IO) {
         val profile = profileDao.getProfileById(profileId) ?: return@withContext 0
@@ -506,13 +477,8 @@ class IptvRepository(
             )
         }
 
-        if (profile.sourceType.equals("m3u", ignoreCase = true) &&
-            profile.sourceLabel.startsWith("http", ignoreCase = true)
-        ) {
-            return@withContext loadM3UUrlForProfile(profile.id, profile.sourceLabel)
-        }
-
-        if (profile.sourceType.equals("txt", ignoreCase = true) &&
+        if ((profile.sourceType.equals("m3u", ignoreCase = true) ||
+                profile.sourceType.equals("txt", ignoreCase = true)) &&
             profile.sourceLabel.startsWith("http", ignoreCase = true)
         ) {
             return@withContext loadM3UUrlForProfile(profile.id, profile.sourceLabel)
@@ -564,7 +530,7 @@ class IptvRepository(
         }
 
     /**
-     * Identico ao loadXtreamData(server, user, pass, existingProfileId) do index_2.html
+     * Carrega categorias e streams (LIVE, VOD, SERIES) apenas quando o perfil e ativado.
      */
     suspend fun loadXtreamData(
         server: String,
