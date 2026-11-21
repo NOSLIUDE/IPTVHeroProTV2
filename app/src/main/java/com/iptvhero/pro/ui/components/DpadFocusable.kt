@@ -1,6 +1,5 @@
 package com.iptvhero.pro.ui.components
 
-import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -44,9 +43,8 @@ fun Modifier.heroFocusable(
         .onKeyEvent { event ->
             val key = event.key
             val isConfirmKey = key == Key.DirectionCenter ||
-              key == Key.Enter ||
-              key == Key.NumPadEnter
-            
+                key == Key.Enter ||
+                key == Key.NumPadEnter
             if (isConfirmKey && event.type == KeyEventType.KeyUp) {
                 onClick()
                 true

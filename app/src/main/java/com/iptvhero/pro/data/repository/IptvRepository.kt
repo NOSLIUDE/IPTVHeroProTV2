@@ -282,8 +282,8 @@ class IptvRepository(
         }
 
     /**
-     * Processa um lote de linhas criando apenas os metadados leves do perfil.
-     * O download completo das listas so ocorre quando o usuario seleciona/ativa o perfil.
+     * Processa um lote de linhas (igual ao processBulk / processOneBulkLine do index_2.html),
+     * criando 1 perfil por linha valida com nome de heroi Marvel/DC, validade, conexoes e contagens.
      */
     suspend fun processBulkLines(
         rawLines: List<String>,
@@ -343,7 +343,7 @@ class IptvRepository(
     }
 
     /**
-     * Processa uma linha do lote sem baixar listas completas de canais, VODs ou series.
+     * Identico ao processOneBulkLine(line) do index_2.html
      */
     private suspend fun processSingleBulkLine(line: String, bulkOrigin: Boolean): String {
         val creds = PlaylistParser.detectXtreamPure(line)
@@ -383,8 +383,6 @@ class IptvRepository(
                     sourceType = "txt",
                     sourceLabel = inline.first,
                     liveCount = 1,
-                    vodCount = 0,
-                    seriesCount = 0,
                     bulkOrigin = bulkOrigin,
                     isActive = false
                 )
@@ -408,8 +406,9 @@ class IptvRepository(
     }
 
     /**
-     * Consulta apenas player_api.php (sem &action=...) para obter validade e conexoes
-     * sem baixar listas completas durante o lote.
+     * Identico ao bulkLoadXtream(server, user, pass) do index_2.html:
+     * Valida credenciais, extrai exp_date, max_connections e contagens de live/vod/series
+     * sem sobrecarregar o banco antes do usuario clicar no card do perfil.
      */
     private suspend fun bulkLoadXtreamProfileOnly(
         server: String,
@@ -458,7 +457,8 @@ class IptvRepository(
     }
 
     /**
-     * Ativa o perfil e baixa a lista completa apenas quando o perfil e selecionado.
+     * Identico ao activateProfile(id) do index_2.html:
+     * Ativa o perfil e reconecta automaticamente se for Xtream ou M3U remoto.
      */
     suspend fun activateAndSyncProfile(profileId: Long): Int = withContext(Dispatchers.IO) {
         val profile = profileDao.getProfileById(profileId) ?: return@withContext 0
@@ -477,8 +477,13 @@ class IptvRepository(
             )
         }
 
-        if ((profile.sourceType.equals("m3u", ignoreCase = true) ||
-                profile.sourceType.equals("txt", ignoreCase = true)) &&
+        if (profile.sourceType.equals("m3u", ignoreCase = true) &&
+            profile.sourceLabel.startsWith("http", ignoreCase = true)
+        ) {
+            return@withContext loadM3UUrlForProfile(profile.id, profile.sourceLabel)
+        }
+
+        if (profile.sourceType.equals("txt", ignoreCase = true) &&
             profile.sourceLabel.startsWith("http", ignoreCase = true)
         ) {
             return@withContext loadM3UUrlForProfile(profile.id, profile.sourceLabel)
@@ -530,7 +535,7 @@ class IptvRepository(
         }
 
     /**
-     * Carrega categorias e streams (LIVE, VOD, SERIES) apenas quando o perfil e ativado.
+     * Identico ao loadXtreamData(server, user, pass, existingProfileId) do index_2.html
      */
     suspend fun loadXtreamData(
         server: String,

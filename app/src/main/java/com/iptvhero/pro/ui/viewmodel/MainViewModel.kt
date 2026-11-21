@@ -207,9 +207,7 @@ class MainViewModel(
         val active = repository.getActiveProfile()
         activeProfile = active
         activeProfileIdFlow.value = active?.id
-        if (active != null) {
-            runCatching { repository.activateAndSyncProfile(active.id) }
-        }
+
 
         _uiState.update {
             it.copy(
